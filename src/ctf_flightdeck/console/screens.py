@@ -290,6 +290,7 @@ KEY_HELP = (
     ("enter on ▸", "Expand or collapse finished lanes"),
     ("enter on board", "Open the challenge's lane; with none or several, its card: queue, claim, 1-9 open a lane"),
     ("esc", "Leave the command bar, clear the filter, or go back to the fleet"),
+    ("ctrl+f", "In compact focus: toggle files / transcript; tab scrolls the needs-you card"),
     ("ctrl+n", "In a lane: the next lane that needs you, in attention order, round to the first"),
     ("q", "Quit. While lanes are open it asks first: y stops every lane for good (a run cannot be resumed)"),
 )

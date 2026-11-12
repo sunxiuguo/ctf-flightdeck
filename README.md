@@ -254,6 +254,16 @@ The fleet's keys act on the selected lane: `p` pause, `h` hint, `r` redirect, `f
 mock, `space` freezes the clock and `.` steps it. All challenges, teammates and flags there are
 invented.
 
+### Phone SSH terminals
+
+The console switches to a compact fleet and full-width focus view below 70 columns.
+State, cost markers and numbered answers stay available. Tab to a long reason or
+needs-you card, then use arrows / End to scroll; `ctrl+f` toggles files in focus.
+See [compact terminal controls](docs/CONSOLE-SPEC.md#compact-phone-terminals).
+`flightdeck mock --scenario default --screenshot /tmp/flightdeck-mock` creates
+synthetic 56×24 examples without models or network calls.
+
+
 ## Optional extras
 
 - `ctf-flightdeck[cactus]`: Cactus Needle, a small on-device model, one of the light model's

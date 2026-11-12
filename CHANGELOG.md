@@ -2,6 +2,13 @@
 
 What changed for players, newest first. Milestones are in [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## Unreleased
+
+- Keep attention, state, cost and numbered interventions usable on 50–60 column
+  terminals, with wrapped scrollable reasons and a full-width focus view.
+- Use `ctrl+f` for files in compact focus; report compact omissions in `doctor`
+  and capture synthetic 56×24 fleet/focus examples with `mock --screenshot`.
+
 ## 0.1.0 (2026-11-11)
 
 The first public release: the console, agent lanes on any model API or a local model server,

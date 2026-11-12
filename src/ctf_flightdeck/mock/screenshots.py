@@ -31,7 +31,7 @@ PREFERRED = (AlertKind.HINT, AlertKind.DIRECTION, AlertKind.EFFORT, AlertKind.LO
 # in CaptureResult.skipped as "<moment>[, <moment>...]: why".
 MOMENTS = (
     "open", "wave-drop", "alert", "command-menu", "focus-lane", "chat", "focus-after", "diff",
-    "approve-pending", "approve-submit", "team-stop", "attention-sort", f"narrow-{NARROW[0]}x{NARROW[1]}", "fork-prompt",
+    "approve-pending", "approve-submit", "team-stop", "attention-sort", f"narrow-{NARROW[0]}x{NARROW[1]}", "compact-fleet-56x24", "compact-focus-56x24", "fork-prompt",
     "kill-prompt", "take-over", "challenge-card", "help",
 )
 
@@ -191,6 +191,16 @@ async def _capture(world: FakeWorld, out_dir: Path, size: tuple[int, int]) -> Ca
         await pilot.resize_terminal(*NARROW)
         await pilot.pause()
         await run.shot(f"narrow-{NARROW[0]}x{NARROW[1]}")
+        await pilot.resize_terminal(56, 24)
+        await pilot.pause()
+        await run.shot("compact-fleet-56x24")
+        if top is not None:
+            app.open_lane(top.id)
+            await pilot.pause()
+            await run.shot("compact-focus-56x24")
+            await run.fleet(select=top.id)
+        else:
+            result.skipped.append("compact-focus-56x24: no lane to open")
         await pilot.resize_terminal(*size)
         await pilot.pause()
 

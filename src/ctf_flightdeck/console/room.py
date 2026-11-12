@@ -35,6 +35,7 @@ def busy_header(*, max_lanes: int, containerized: bool, team: bool = False) -> v
 class Room:
     """What a terminal leaves out of the console on a busy run, and from which size none of it."""
 
+    compact: bool  # focus files use a toggle instead of a side-by-side pane
     board: bool  # the board hides
     header: tuple[str, ...]  # the header's pieces left out (views.HEADER_WORDS keys), in the order they drop
     fleet_keys: tuple[str, ...]  # the fleet view's keys left out ("s sort"), in the order they go (solo mode)
@@ -53,6 +54,8 @@ class Room:
             out.append(f"{_and([views.HEADER_WORDS[name] for name in self.header])} in the header")
         if self.board:
             out.append(f"the board (it shows from {fleet.BOARD_MIN_WIDTH} columns)")
+        if self.compact:
+            out.append("the side-by-side files pane (ctrl+f toggles files / transcript in focus)")
         if self.rows < self.needed:
             lanes = self.needed - 1
             out.append(f"{self.needed - self.rows} of the lane list's {self.needed} rows ({lanes} lane{'' if lanes == 1 else 's'} "
@@ -75,8 +78,8 @@ def room(columns: int, lines: int, *, max_lanes: int, containerized: bool) -> Ro
     cut, focus_keys = focus.key_room(columns)
     widest = max(fleet.BOARD_MIN_WIDTH, whole, solo_keys, focus_keys)
     return Room(
-        board=columns < fleet.BOARD_MIN_WIDTH, header=tuple(header), fleet_keys=tuple(keys), focus_keys=tuple(cut),
-        rows=fleet.lane_rows(lines), needed=max_lanes + 1, columns=widest, team_columns=max(widest, team_keys),
+        compact=columns < fleet.COMPACT_WIDTH, board=columns < fleet.BOARD_MIN_WIDTH, header=tuple(header), fleet_keys=tuple(keys), focus_keys=tuple(cut),
+        rows=fleet.lane_rows(lines, columns), needed=max_lanes + 1, columns=widest, team_columns=max(widest, team_keys),
         lines=fleet.FLEET_ROWS + max_lanes + 1, event=SAMPLE_EVENT + widest - whole,
     )
 

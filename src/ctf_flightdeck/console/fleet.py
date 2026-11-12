@@ -16,7 +16,7 @@ from rich.text import Text
 from textual import events, on
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import DataTable, Static
 
@@ -29,6 +29,8 @@ from .widgets import CommandBar
 if TYPE_CHECKING:
     from .app import FlightdeckApp
 
+COMPACT_WIDTH = 70  # phone SSH: keep attention, state and spend; details remain in focus
+COMPACT_WHY_ROWS = 5
 BOARD_MIN_WIDTH = 100  # narrower than this, the board hides and the lanes get the room
 # The key line on a narrow terminal: the highest rank is left out first (the later key, on a tie).
 # Help and quit always stay: help lists every key.
@@ -46,9 +48,9 @@ KEY_MARGIN = 2  # the key line has a margin of one cell each side
 FLEET_ROWS = 13
 
 
-def lane_rows(lines: int) -> int:
+def lane_rows(lines: int, columns: int = 100) -> int:
     """How many lane rows the lane list shows at once on a terminal `lines` tall (it scrolls to the rest)."""
-    return max(0, lines - FLEET_ROWS)
+    return max(0, lines - FLEET_ROWS - (COMPACT_WHY_ROWS - 2 if columns < COMPACT_WIDTH else 0))
 
 
 class FleetScreen(Screen, inherit_bindings=False):
@@ -60,7 +62,10 @@ class FleetScreen(Screen, inherit_bindings=False):
     FleetScreen #lanes-pane { width: 1fr; }
     FleetScreen #board, FleetScreen #lanes { height: 1fr; }
     FleetScreen #lanes, FleetScreen #board { overflow-x: hidden; }
-    FleetScreen #why { height: 2; margin-top: 1; text-wrap: nowrap; text-overflow: ellipsis; }
+    FleetScreen #why-scroll { height: 2; margin-top: 1; }
+    FleetScreen.compact #why-scroll { height: 5; }
+    FleetScreen.compact #why { height: auto; text-wrap: wrap; }
+    FleetScreen #why { height: 2; text-wrap: nowrap; text-overflow: ellipsis; }
     FleetScreen #status { height: 1; margin: 0 2; text-wrap: nowrap; text-overflow: ellipsis; }
     FleetScreen #keys { height: 1; margin: 0 1; link-style: none; link-style-hover: underline; }
     """
@@ -99,6 +104,7 @@ class FleetScreen(Screen, inherit_bindings=False):
         self._lane_cursor: str | None = None  # row key under the cursor: a lane or the finished row
         self._lane_columns: list[tuple[str, str, int]] = []
         self._board_columns: list[tuple[str, str, int]] = []
+        self._why_content: tuple[object, ...] | None = None
         self._ready = False  # widgets composed; set at the start of on_mount
 
     @property
@@ -114,13 +120,16 @@ class FleetScreen(Screen, inherit_bindings=False):
                 yield DataTable(id="board", cursor_type="row")
             with Vertical(id="lanes-pane", classes="panel"):
                 yield DataTable(id="lanes", cursor_type="row")
-                yield Static(id="why")
+                with VerticalScroll(id="why-scroll"):
+                    yield Static(id="why")
         yield Static(id="status")
         yield CommandBar("/ for commands · enter opens the selected lane · or type a message to it", id="bar")
         yield Static(id="keys")
 
     def on_mount(self) -> None:
         self._ready = True
+        self.set_class(self.size.width < COMPACT_WIDTH, "compact")
+        self.query_one("#why-scroll").can_focus = self.has_class("compact")
         self._show_keys(self.size.width)
         self._fit_board(self.size.width)
         self._set_columns()
@@ -128,6 +137,8 @@ class FleetScreen(Screen, inherit_bindings=False):
         self.query_one("#lanes", DataTable).focus()
 
     def on_resize(self, event: events.Resize) -> None:
+        self.set_class(event.size.width < COMPACT_WIDTH, "compact")
+        self.query_one("#why-scroll").can_focus = self.has_class("compact")
         self._show_keys(event.size.width)
         self._fit_board(event.size.width)
         self.call_after_refresh(self._set_columns)
@@ -159,7 +170,10 @@ class FleetScreen(Screen, inherit_bindings=False):
         lanes = self.query_one("#lanes", DataTable)
         board_cols = views.fit_columns(views.BOARD_COLUMNS, "name", views.BOARD_NAME_MIN, max(20, board.size.width - 1), board.cell_padding)
         lane_cols = views.fit_columns(
-            views.LANE_COLUMNS, "last", views.LAST_MIN, max(30, lanes.size.width - 1), lanes.cell_padding, views.LANE_SHRINK
+            views.COMPACT_LANE_COLUMNS if self.has_class("compact") else views.LANE_COLUMNS,
+            "chall" if self.has_class("compact") else "last",
+            4 if self.has_class("compact") else views.LAST_MIN,
+            max(30, lanes.size.width - 1), lanes.cell_padding, views.LANE_SHRINK
         )
         if board_cols != self._board_columns:
             self._board_columns = board_cols
@@ -279,7 +293,15 @@ class FleetScreen(Screen, inherit_bindings=False):
             why.update(views.challenge_why(deck, deck.challenges[self.selected_challenge]))
             return
         lane = deck.lanes.get(self.selected_lane or "")
-        why.update(views.lane_why(deck, lane) if lane else Text(" No lane yet: lanes start when challenges are released.", theme.MUTED))
+        text = views.lane_why(deck, lane) if lane else Text(" No lane yet: lanes start when challenges are released.", theme.MUTED)
+        if self.has_class("compact"):
+            text.no_wrap = False
+            text.overflow = "fold"
+        content = (text.plain, repr(lane.pending) if lane else None, repr(lane.waiting) if lane else None)
+        if content != self._why_content:
+            self._why_content = content
+            self.query_one("#why-scroll").scroll_home(animate=False)
+        why.update(text)
 
     # ------------------------------------------------------------------ selection
 

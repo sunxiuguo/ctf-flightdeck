@@ -41,7 +41,7 @@ runner = CliRunner()
 # The default scenario's moments, in the order they are shot. "alert" is alert-<tag>.
 MOMENTS = (
     "open", "wave-drop", "alert", "command-menu", "focus-lane", "chat", "focus-after", "diff",
-    "approve-pending", "approve-submit", "team-stop", "attention-sort", "narrow-120x36",
+    "approve-pending", "approve-submit", "team-stop", "attention-sort", "narrow-120x36", "compact-fleet-56x24", "compact-focus-56x24",
     "fork-prompt", "kill-prompt", "take-over", "challenge-card", "help",
 )
 COURSE_TAGS = {kind.tag: kind for kind in COURSE_ALERTS}
@@ -555,11 +555,15 @@ def test_narrow_shot_has_no_line_longer_than_120_cells(default_run):
     assert widest(shot(out, "narrow-120x36")) <= 120
 
 
-def test_only_the_narrow_shot_is_narrow(default_run):
+def test_only_the_narrow_and_compact_shots_are_narrow(default_run):
     _, out = default_run
     widths = {path.name: columns(path) for path in out.iterdir()}
     narrow = shot(out, "narrow-120x36").name
     assert widths.pop(narrow) == 120
+    for moment in ("compact-fleet-56x24", "compact-focus-56x24"):
+        path = shot(out, moment)
+        assert widths.pop(path.name) == 56
+        assert widest(path) <= 56
     assert set(widths.values()) == {screenshots.SIZE[0]}
 
 

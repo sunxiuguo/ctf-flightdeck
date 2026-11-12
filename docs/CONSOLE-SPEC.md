@@ -176,3 +176,24 @@ The mock ships fake data that exercises every alert and at least these scenarios
 4. **Web wrong way**: a web lane brute-forcing directories while the source is in the handout.
 5. **Team**: a teammate solves a challenge a lane is working on; the lane stops by itself.
 6. **Flag found**: approve submit; the board updates.
+
+## Compact phone terminals
+
+Below 70 columns, the fleet keeps lane identity, attention, state and cost (including
+unpriced / pending-cost markers), rather than squeezing the wide table off the screen.
+The selected lane's reason and numbered answers wrap in a five-row scrollable area.
+Tab to that area and use the arrow keys or End to reach long answers; the number keys
+still act on the selected lane. Enter opens the full lane details.
+
+Focus uses the available width for the transcript and needs-you card. A separate
+summary keeps the lane state, turns, tokens and cost visible instead of losing them
+at the end of a long border title. `ctrl+f` switches between transcript and files;
+`/diff` opens files directly. Opening another lane returns to its transcript and chat.
+Tab reaches the scrollable needs-you card; End reaches its last answers. Return to
+an empty chat box for numbered quick answers. Widening the terminal restores the
+side-by-side files pane. `doctor` reports the compact files toggle and reduced fleet
+row count using the same thresholds as the console.
+
+`flightdeck mock --scenario default --screenshot /tmp/flightdeck-mock` includes
+`compact-fleet-56x24` and `compact-focus-56x24` SVGs. These are scripted synthetic
+scenarios, not a live event or evidence of user adoption.

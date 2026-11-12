@@ -2457,7 +2457,7 @@ def test_at_80x24_the_focus_view_keeps_rows_for_the_transcript():
         focus = await open_focus(pilot, app, lane.id)
         talk = focus.query_one("#talk-pane").content_region.height
         assert focus.query_one("#transcript").region.height >= 3
-        assert focus.query_one("#now").region.height <= (talk + 1) // 2
+        assert focus.query_one("#now-scroll").region.height <= (talk + 1) // 2  # visible viewport, not its scrollable contents
         assert _transcript(app)  # some of it is drawn
 
     drive(app, script, size=(80, 24))
@@ -3229,7 +3229,7 @@ def four_lanes_and_one_finished(*, team: bool = False) -> Deck:
     return deck
 
 
-@pytest.mark.parametrize("size", [(60, 12), (99, 17), (100, 30), (108, 18), (125, 18), (146, 18), (147, 17), (147, 18)])
+@pytest.mark.parametrize("size", [(56, 24), (60, 12), (99, 17), (100, 30), (108, 18), (125, 18), (146, 18), (147, 17), (147, 18)])
 def test_what_doctor_says_a_terminal_leaves_out_is_what_the_console_leaves_out(size, monkeypatch):
     """doctor measures a terminal with room.room(); at that size, on the busy run it measures
     with (the header of room.busy_header), the console leaves out exactly that: the header's
@@ -3291,3 +3291,102 @@ def test_doctors_size_has_room_for_the_dollars_of_a_coding_agent_run_whose_cli_t
         assert left == [], (later, left)
     _, left = views.fit_header(replace(busy, event="E" * (fit.event + 1), later=True), width)
     assert left != []
+
+
+@pytest.mark.parametrize("columns", [50, 56, 60])
+def test_phone_console_keeps_attention_answers_state_and_cost(columns):
+    world, app = make("default")
+
+    async def script(pilot):
+        lane = _flag_lane(world)
+        lane.dollars = None
+        lane.known_dollars = 12.34
+        lane.dollars_later = True
+        lane.tokens = 12_300_000
+        app.fleet.select_lane(lane.id)
+        await pilot.pause()
+        head = region_text(app, "#lanes").splitlines()[0]
+        assert "state" in head and "cost" in head
+        assert "$12.34+…" in region_text(app, "#lanes")
+        assert "1" in region_text(app, "#why") and "submit" in region_text(app, "#why")
+        await open_focus(pilot, app, lane.id)
+        assert not app.screen.query_one("#files-pane").display
+        assert app.screen.query_one("#talk-pane").outer_size.width >= app.screen.query_one("#main").size.width - 2
+        assert "$12.34+…" in region_text(app, "#lane-summary")
+        assert "12.3M tok" in region_text(app, "#lane-summary")
+        assert "ctrl+f" in region_text(app, "#lane-summary")
+        assert "needs you now" in region_text(app, "#now")
+        await press(pilot, "ctrl+f")
+        assert app.screen.query_one("#files-pane").display
+        assert not app.screen.query_one("#talk-pane").display
+        await press(pilot, "ctrl+f")
+        assert app.screen.query_one("#talk-pane").display
+        await press(pilot, "1")
+        assert lane.state is LaneState.SOLVED
+        await pilot.resize_terminal(120, 36)
+        await pilot.pause()
+        assert app.screen.query_one("#talk-pane").display
+        assert app.screen.query_one("#files-pane").display
+
+    drive(app, script, size=(columns, 30))
+
+
+def test_phone_attention_scroll_and_file_view_do_not_hide_the_next_lane():
+    world, app = make("default")
+
+    async def script(pilot):
+        lane = _flag_lane(world)
+        lane.pending.detail = "Synthetic long reason " * 20 + "END-REASON"
+        app.fleet.select_lane(lane.id)
+        await pilot.pause()
+        scroll = app.screen.query_one("#why-scroll")
+        assert scroll.max_scroll_y > 0
+        for _ in range(6):
+            if scroll.has_focus:
+                break
+            await press(pilot, "tab")
+        assert scroll.has_focus
+        await press(pilot, "end")
+        assert "0" in region_text(app, "#why-scroll") and "submit" in region_text(app, "#why-scroll")
+        previous_scroll = scroll.scroll_y
+        app.refresh_view()
+        await pilot.pause()
+        assert scroll.scroll_y == previous_scroll  # timer does not interrupt reading
+        focus = await open_focus(pilot, app, lane.id)
+        now = focus.query_one("#now-scroll")
+        assert now.max_scroll_y > 0
+        for _ in range(6):
+            if now.has_focus:
+                break
+            await press(pilot, "tab")
+        assert now.has_focus
+        await press(pilot, "end")
+        assert "/decline" in region_text(app, "#now-scroll")
+        previous_scroll = now.scroll_y
+        app.refresh_view()
+        await pilot.pause()
+        assert now.scroll_y == previous_scroll
+        top_alert = lane.alerts[0]
+        lane.pending.detail = "New pending detail under the same alert"
+        app.refresh_view()
+        await pilot.pause()
+        assert lane.alerts[0] is top_alert and now.scroll_y == 0
+        await press(pilot, "ctrl+f")
+        other = next(l for l in world.deck.lanes.values() if l.id != lane.id)
+        app.open_lane(other.id)
+        await pilot.pause()
+        assert focus.query_one("#talk-pane").display and not focus.query_one("#files-pane").display
+        assert focus.query_one("#chat", CommandBar).field.has_focus
+        assert now.scroll_y == 0
+        await press(pilot, "escape")
+        app.fleet.select_lane(lane.id)
+        app.screen.query_one("#lanes", DataTable).focus()
+        lane.pending.detail = "New pending reason"
+        app.refresh_view()
+        await pilot.pause()
+        assert scroll.scroll_y == 0
+        await press(pilot, "0")
+        assert lane.pending is None and lane.state is not LaneState.SOLVED
+        assert "side-by-side files" in " ".join(room.room(56, 24, max_lanes=16, containerized=True).left_out())
+
+    drive(app, script, size=(56, 24))

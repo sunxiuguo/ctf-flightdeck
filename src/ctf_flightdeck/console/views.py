@@ -429,6 +429,13 @@ LANE_COLUMNS = (
     ("idle", "idle", 4, 0),
     ("last", "last action", 0, 1),
 )
+COMPACT_LANE_COLUMNS = (
+    ("lane", "lane", 4, 0),
+    ("!", "!", 10, 0),
+    ("state", "state", 8, 0),
+    ("cost", "cost", 8, 0),
+    ("chall", "chall", 0, 1),
+)
 LAST_MIN = 12
 LANE_SHRINK = {"chall": 8}  # on a narrow terminal the challenge name narrows before a column is cut
 FINISHED_ROW = "__finished__"

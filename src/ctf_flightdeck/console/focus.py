@@ -26,6 +26,7 @@ from textual.widgets.option_list import Option
 from ..core.model import Lane
 from . import theme, views
 from .widgets import CommandBar
+from .fleet import COMPACT_WIDTH
 
 if TYPE_CHECKING:
     from .app import FlightdeckApp
@@ -68,9 +69,16 @@ class FocusScreen(Screen, inherit_bindings=False):
     FocusScreen #others { height: 1; margin: 0 1; text-wrap: nowrap; text-overflow: ellipsis; link-style: none; link-style-hover: underline; }
     FocusScreen #main { height: 1fr; margin-top: 1; }
     FocusScreen #talk-pane { width: 3fr; }
+    FocusScreen #lane-summary { display: none; height: 3; }
+    FocusScreen.compact #lane-summary { display: block; }
+    FocusScreen.compact #talk-pane { width: 100%; }
+    FocusScreen.compact #files-pane { display: none; width: 1fr; }
+    FocusScreen.compact.files-visible #files-pane { display: block; }
+    FocusScreen.compact.files-visible #talk-pane { display: none; }
     FocusScreen #files-pane { width: 2fr; }
     FocusScreen #transcript { height: 1fr; min-height: 3; background: transparent; }
-    FocusScreen #now { height: auto; max-height: 50%; }
+    FocusScreen #now-scroll { height: auto; max-height: 50%; }
+    FocusScreen #now { height: auto; }
     FocusScreen #files { height: auto; max-height: 8; background: transparent; border: none; }
     FocusScreen #diff-scroll { height: 1fr; }
     FocusScreen #status { height: 1; margin: 0 2; text-wrap: nowrap; text-overflow: ellipsis; }
@@ -78,6 +86,7 @@ class FocusScreen(Screen, inherit_bindings=False):
     """
     BINDINGS = [
         Binding("escape", "back", "fleet"),
+        Binding("ctrl+f", "toggle_files", "files / transcript"),
         Binding("ctrl+n", "next_needing", "next lane needing you"),
         Binding("tab", "app.focus_next", "panes"),
         Binding("shift+tab", "app.focus_previous", "panes back", show=False),
@@ -93,6 +102,7 @@ class FocusScreen(Screen, inherit_bindings=False):
         self._file_paths: list[str] | None = None  # None: the list must be rebuilt
         self._drafts: dict[str, str] = {}  # unsent chat text, by lane
         self.diff_path: str | None = None
+        self._now_content: tuple[object, ...] | None = None
         self._ready = False  # widgets composed; set at the start of on_mount
 
     @property
@@ -108,8 +118,10 @@ class FocusScreen(Screen, inherit_bindings=False):
         yield Static(id="others")
         with Horizontal(id="main"):
             with Vertical(id="talk-pane", classes="panel"):
+                yield Static(id="lane-summary")
                 yield RichLog(id="transcript", wrap=True, min_width=20, auto_scroll=True)
-                yield Static(id="now")
+                with VerticalScroll(id="now-scroll"):
+                    yield Static(id="now")
             with Vertical(id="files-pane", classes="panel"):
                 yield OptionList(id="files")
                 with VerticalScroll(id="diff-scroll"):
@@ -120,10 +132,23 @@ class FocusScreen(Screen, inherit_bindings=False):
 
     def on_mount(self) -> None:
         self._ready = True
+        self.set_class(self.size.width < COMPACT_WIDTH, "compact")
+        self.query_one("#now-scroll").can_focus = self.has_class("compact")
         self.query_one("#chat", CommandBar).field.quick = self._quick
         # pgup/pgdn scroll the transcript from anywhere, so tab goes chat -> files -> diff
         self.query_one("#transcript", RichLog).can_focus = False
         self.show_lane(self.lane_id, self._first_file)
+
+    def on_resize(self, event: events.Resize) -> None:
+        self.set_class(event.size.width < COMPACT_WIDTH, "compact")
+        self.query_one("#now-scroll").can_focus = self.has_class("compact")
+
+    def action_toggle_files(self) -> None:
+        self.toggle_class("files-visible")
+        if self.has_class("files-visible"):
+            self.query_one("#files", OptionList).focus()
+        else:
+            self.query_one("#chat", CommandBar).field.focus()
 
     def show_lane(self, lane_id: str, file: str | None = None) -> None:
         """Switch this view to another lane (or reopen it).
@@ -144,12 +169,14 @@ class FocusScreen(Screen, inherit_bindings=False):
         else:
             chat.hide_menu()
         self.lane_id = lane_id
+        self.set_class(file is not None, "files-visible")
         self._written = 0
         self._file_paths = None
         self.diff_path = file or None  # "" means: the newest file
         self.query_one("#transcript", RichLog).clear()
         self.refresh_view()
         if file is not None:
+            self.add_class("files-visible")
             self.query_one("#files", OptionList).focus()
         else:
             self.query_one("#chat", CommandBar).field.focus()
@@ -167,6 +194,9 @@ class FocusScreen(Screen, inherit_bindings=False):
             self.query_one("#others", Static).update(views.others_strip(deck, lane))
             pane = self.query_one("#talk-pane")
             pane.border_title = views.focus_title(deck, lane)
+            self.query_one("#lane-summary", Static).update(
+                Text(f"{lane.id} · {lane.state.value} · {views.lane_dollars(lane)}\nturn {lane.turns} · {views.fmt.tokens(lane.tokens)} tok\nctrl+f files / transcript")
+            )
             pane.border_subtitle = views.plan_line(deck, lane)
             log = self.query_one("#transcript", RichLog)
             at_end = log.scroll_y >= log.max_scroll_y  # a player reading back stays where they are
@@ -174,6 +204,13 @@ class FocusScreen(Screen, inherit_bindings=False):
                 for line in views.transcript_lines(deck, lane, action):
                     log.write(line, scroll_end=at_end)
             self._written = len(lane.actions)
+            now_content = (
+                lane.id, lane.state, lane.result, repr(lane.alerts), repr(lane.pending),
+                repr(lane.waiting), tuple(lane.hints),
+            )
+            if now_content != self._now_content:
+                self._now_content = now_content
+                self.query_one("#now-scroll").scroll_home(animate=False)
             self.query_one("#now", Static).update(views.now_card(deck, lane))
             self._render_files()
             chat = self.query_one("#chat", CommandBar)
@@ -185,6 +222,7 @@ class FocusScreen(Screen, inherit_bindings=False):
         files = self.query_one("#files", OptionList)
         pane = self.query_one("#files-pane")
         pane.border_title = Text.assemble(("files changed", "bold"), (f"  {len(paths)}", theme.MUTED))
+        pane.border_subtitle = "ctrl+f transcript" if self.has_class("compact") else ""
         if paths != self._file_paths:
             self._file_paths = paths
             files.clear_options()
